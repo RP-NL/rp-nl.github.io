@@ -1,0 +1,86 @@
+------- Spraakherkenning ----------
+      var herkenner = null;
+      function gebruikHerkenner() {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) return null;
+        var r = new SR();
+        r.lang = "nl-NL";
+        r.continuous = false;
+        r.interimResults = false;
+        return r;
+      }
+
+      function startLuisteren() {
+        if (luistert || bezig) return;
+        var r = gebruikHerkenner();
+        if (!r) {
+            foutEl.textContent = "Spraakherkenning wordt niet ondersteund door deze browser — typ gerust, ik lees alles voor.";
+            return;
+        }
+        herkenner = r;
+        r.onresult = function (e) {
+          luistert = false;
+          zetStatus();
+          stuur(e.results[0][0].transcript);
+        };
+        r.onend = function () {
+          luistert = false;
+          zetStatus();
+        };
+        r.onerror = function () {
+          luistert = false;
+          zetStatus();
+          foutEl.textContent = "Ik kon je even niet verstaan. Probeer het opnieuw.";
+        };
+        luistert = true;
+        zetStatus();
+        r.start();
+      }
+
+      function stopLuisteren() {
+        if (herkenner) herkenner.stop();
+        luistert = false;
+        zetStatus();
+      }
+
+      function wisselMic() {
+        if (luistert) stopLuisteren();
+        else startLuisteren();
+      }
+
+      function wisselPraat() {
+        praatAan = !praatAan;
+        if (!praatAan) handsfreeAan = false;
+        if (!praatAan && typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
+        zetStatus();
+      }
+
+      function wisselHandsfree() {
+        handsfreeAan = !handsfreeAan;
+        if (handsfreeAan) {
+          praatAan = true;
+          startLuisteren();
+        } else {
+          stopLuisteren();
+        }
+        zetStatus();
+      }
+
+      function nieuwGesprek() {
+        if (typeof window.speechSynthesis !== "undefined") window.speechSynthesis.cancel();
+        stopLuisteren();
+        handsfreeAan = false;
+        geschiedenis = [];
+        berichten = [{ van: "bijrijder", tekst: "Nieuwe start! Waar wil je het met me over hebben?" }];
+        bewaar("bijrijder-chat", berichten);
+        bewaar("bijrijder-historie", geschiedenis);
+        foutEl.textContent = "";
+        toonBerichten();
+        zetStatus();
+      }
+
+      toonBerichten();
+      zetStatus();
+    </script>
+  </body>
+</html>
