@@ -77,6 +77,18 @@
       <input type="range" min="0" max="1" step="0.1" value="0.6" id="staal" oninput="staalWaarde=this.value" />
     </div>
 
+    <div id="stemrij" style="display:none; padding: 0 16px 8px;">
+      <button class="chip" onclick="openStemKiezer()">🗣 Stem kiezen</button>
+    </div>
+
+    <div id="stemKiezer" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.6); z-index:50;" onclick="sluitStemKiezer()">
+      <div style="position:absolute; bottom:0; left:0; right:0; background:#1e293b; border-radius:24px 24px 0 0; padding:16px; max-height:70%; overflow-y:auto;" onclick="event.stopPropagation()">
+        <div style="font-weight:600; margin-bottom:12px;">Stem kiezen</div>
+        <div id="stemLijst"></div>
+        <button class="chip" style="width:100%; margin-top:12px;" onclick="sluitStemKiezer()">Sluiten</button>
+      </div>
+    </div>
+
     <div class="invoer">
       <input id="tekst" placeholder="Typ iets…" onkeydown="if(event.key==='Enter')stuurVanInvoer()" />
       <button id="stuur" onclick="stuurVanInvoer()" aria-label="Verstuur">➤</button>
@@ -138,6 +150,67 @@
       }
 
       geschiedenis = laad("bijrijder-historie", []);
+      var gekozenStemNaam = laad("bijrijder-stem", null);
+
+      function vindStem(stemmen) {
+        if (!gekozenStemNaam) return null;
+        for (var i = 0; i < stemmen.length; i++) {
+          if (stemmen[i].name === gekozenStemNaam) return stemmen[i];
+        }
+        return null;
+      }
+
+      function openStemKiezer() {
+        var lijst = document.getElementById("stemLijst");
+        lijst.innerHTML = "";
+        var stemmen = typeof window.speechSynthesis !== "undefined" ? window.speechSynthesis.getVoices() || [] : [];
+        var nlStemmen = [];
+        for (var i = 0; i < stemmen.length; i++) {
+          if (stemmen[i].lang && stemmen[i].lang.indexOf("nl") === 0) nlStemmen.push(stemmen[i]);
+        }
+
+        var autoKnop = document.createElement("button");
+        autoKnop.className = "chip";
+        autoKnop.style.width = "100%";
+        autoKnop.style.marginBottom = "8px";
+        autoKnop.textContent = "Automatisch (beste stem)";
+        autoKnop.onclick = function () { kiesStem(null); };
+        lijst.appendChild(autoKnop);
+
+        if (!nlStemmen.length) {
+          var leeg = document.createElement("div");
+          leeg.className = "uitleg";
+          leeg.style.padding = "8px";
+          leeg.textContent = "Nog geen Nederlandse stemmen gevonden. Sluit dit scherm en open het opnieuw.";
+          lijst.appendChild(leeg);
+        }
+
+        for (var j = 0; j < nlStemmen.length; j++) {
+          var knop = document.createElement("button");
+          knop.className = "chip";
+          knop.style.width = "100%";
+          knop.style.marginBottom = "8px";
+          knop.textContent = nlStemmen[j].name + (gekozenStemNaam === nlStemmen[j].name ? " ✓" : "");
+          (function (stem) {
+            knop.onclick = function () { kiesStem(stem.name); };
+          })(nlStemmen[j]);
+          lijst.appendChild(knop);
+        }
+
+        document.getElementById("stemKiezer").style.display = "block";
+      }
+
+      function kiesStem(naam) {
+        gekozenStemNaam = naam;
+        bewaar("bijrijder-stem", naam);
+        sluitStemKiezer();
+        spreekUit("Hallo! Dit is hoe ik nu klink.", null);
+      }
+
+      function sluitStemKiezer() {
+        document.getElementById("stemKiezer").style.display = "none";
+      }
+
       var berichten = laad("bijrijder-chat", [{ van: "bijrijder", tekst: "Hoi! Ik ben je bijrijder. Zet Handsfree aan en we kletsen gewoon door — of tik de microfoon en praat." }]);
 
       function toonBerichten() {
@@ -166,6 +239,7 @@
         knopHandsfree.textContent = "🚙 Handsfree " + (handsfreeAan ? "aan" : "uit");
         knopHandsfree.className = "pill groen" + (handsfreeAan ? " aan" : "");
         snelheidsbalk.style.display = praatAan || handsfreeAan ? "flex" : "none";
+        document.getElementById("stemrij").style.display = praatAan || handsfreeAan ? "block" : "none";
         document.getElementById("uitleg").style.display = handsfreeAan ? "none" : "block";
       }
 
@@ -259,24 +333,29 @@
         u.volume = 1;
         try {
           var stemmen = window.speechSynthesis.getVoices() || [];
-          var beste = null;
-          var besteScore = 0;
-          for (var i = 0; i < stemmen.length; i++) {
-            var s = stemmen[i];
-            if (!s.lang || s.lang.indexOf("nl") !== 0) continue;
-            var info = (s.name + " " + (s.voiceURI || "")).toLowerCase();
-            var score = 1;
-            if (info.indexOf("premium") !== -1 || info.indexOf("enhanced") !== -1 || info.indexOf("verbeterd") !== -1) {
-              score = 3;
-            } else if (info.indexOf("xander") !== -1 || info.indexOf("ellen") !== -1) {
-              score = 2;
+          var gekozen = vindStem(stemmen);
+          if (gekozen) {
+            u.voice = gekozen;
+          } else {
+            var beste = null;
+            var besteScore = 0;
+            for (var i = 0; i < stemmen.length; i++) {
+              var s = stemmen[i];
+              if (!s.lang || s.lang.indexOf("nl") !== 0) continue;
+              var info = (s.name + " " + (s.voiceURI || "")).toLowerCase();
+              var score = 1;
+              if (info.indexOf("premium") !== -1 || info.indexOf("enhanced") !== -1 || info.indexOf("verbeterd") !== -1) {
+                score = 3;
+              } else if (info.indexOf("xander") !== -1 || info.indexOf("ellen") !== -1) {
+                score = 2;
+              }
+              if (score > besteScore) {
+                besteScore = score;
+                beste = s;
+              }
             }
-            if (score > besteScore) {
-              besteScore = score;
-              beste = s;
-            }
+            if (beste) u.voice = beste;
           }
-          if (beste) u.voice = beste;
         } catch (e) {}
         if (klaar) {
           u.onend = klaar;
