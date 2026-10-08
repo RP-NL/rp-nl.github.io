@@ -1,4 +1,264 @@
-------- Spraakherkenning ----------
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bijrijder</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+      html, body { height: 100%; background: #0f172a; color: #f1f5f9; }
+      body { display: flex; flex-direction: column; }
+      .kop { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; background: #1e293b; border-bottom: 1px solid #334155; gap: 8px; flex-wrap: wrap; }
+      .kop-links { display: flex; align-items: center; gap: 12px; }
+      .logo { height: 40px; width: 40px; border-radius: 50%; background: rgba(14,165,233,.2); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+      .titel { font-weight: 600; }
+      .badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: rgba(16,185,129,.2); color: #6ee7b7; margin-left: 6px; }
+      .status { font-size: 12px; color: #94a3b8; }
+      .knoppen { display: flex; gap: 8px; }
+      .pill { border: none; border-radius: 99px; padding: 8px 12px; font-size: 14px; font-weight: 500; background: #334155; color: #e2e8f0; cursor: pointer; }
+      .pill.aan { background: #0ea5e9; color: #0f172a; }
+      .pill.groen.aan { background: #10b981; color: #0f172a; }
+      #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+      .regel { display: flex; }
+      .regel.jij { justify-content: flex-end; }
+      .regel.ai { justify-content: flex-start; }
+      .bel { max-width: 85%; border-radius: 24px; padding: 12px 20px; font-size: 17px; line-height: 1.55; }
+      .jij .bel { background: #0ea5e9; color: #0f172a; border-bottom-right-radius: 6px; }
+      .ai .bel { background: #1e293b; border-bottom-left-radius: 6px; }
+      .denkpunt { width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; display: inline-block; animation: stuiter 1s infinite; }
+      .denkpunt:nth-child(2) { animation-delay: .15s; }
+      .denkpunt:nth-child(3) { animation-delay: .3s; }
+      @keyframes stuiter { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+      #fout { text-align: center; font-size: 13px; color: #fcd34d; padding: 0 24px; }
+      .chips { display: flex; gap: 8px; padding: 0 16px 8px; }
+      .chip { flex: 1; border: none; border-radius: 16px; background: rgba(51,65,85,.7); color: #f1f5f9; padding: 12px 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
+      .chip:active { transform: scale(.95); }
+      .snelheid { display: flex; align-items: center; gap: 12px; padding: 0 20px 8px; font-size: 13px; color: #94a3b8; }
+      .snelheid input { flex: 1; accent-color: #0ea5e9; }
+      .invoer { display: flex; align-items: center; gap: 12px; padding: 8px 16px 16px; background: rgba(30,41,59,.6); border-top: 1px solid #334155; }
+      #tekst { flex: 1; border-radius: 16px; border: none; background: rgba(51,65,85,.7); color: #f1f5f9; padding: 14px 16px; font-size: 17px; outline: none; }
+      #tekst:focus { box-shadow: 0 0 0 2px #0ea5e9; }
+      #stuur { height: 56px; width: 56px; border-radius: 16px; border: none; background: #0ea5e9; color: #0f172a; font-size: 22px; cursor: pointer; }
+      #stuur:disabled { opacity: .4; }
+      #mic { height: 64px; width: 64px; border-radius: 50%; border: none; background: #10b981; color: #0f172a; font-size: 26px; cursor: pointer; }
+      #mic.luistert { background: #ef4444; animation: puls 1.2s infinite; }
+      @keyframes puls { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+      .uitleg { font-size: 12px; color: #94a3b8; text-align: center; padding: 0 24px 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="kop">
+      <div class="kop-links">
+        <div class="logo">🚗</div>
+        <div>
+          <div class="titel">Bijrijder<span class="badge">echte AI</span></div>
+          <div class="status" id="status">kletsmodus</div>
+        </div>
+      </div>
+      <div class="knoppen">
+        <button class="pill" id="knopPraat" onclick="wisselPraat()">🔊 uit</button>
+        <button class="pill groen" id="knopHandsfree" onclick="wisselHandsfree()">🚙 Handsfree uit</button>
+        <button class="pill" onclick="nieuwGesprek()" aria-label="Nieuw gesprek">♻️</button>
+      </div>
+    </div>
+
+    <div id="chat"></div>
+    <div id="fout"></div>
+
+    <div class="chips">
+      <button class="chip" onclick="stuur('Vertel eens een goede grap')">😄 Grap</button>
+      <button class="chip" onclick="stuur('Vertel eens een verbazingwekkend feit')">🧠 Feit</button>
+      <button class="chip" onclick="stuur('Wat is er interessant in het nieuws deze week?')">📰 Nieuws</button>
+      <button class="chip" onclick="stuur('Ik verveel me, geef me een leuke opdracht')">🎯 Spel</button>
+    </div>
+
+    <div class="snelheid" id="snelheidsbalk" style="display:none">
+      <span>Spraaksnelheid</span>
+      <input type="range" min="0" max="1" step="0.1" value="0.6" id="staal" oninput="staalWaarde=this.value" />
+    </div>
+
+    <div class="invoer">
+      <input id="tekst" placeholder="Typ iets…" onkeydown="if(event.key==='Enter')stuurVanInvoer()" />
+      <button id="stuur" onclick="stuurVanInvoer()" aria-label="Verstuur">➤</button>
+      <button id="mic" onclick="wisselMic()" aria-label="Praat">🎙</button>
+    </div>
+    <div class="uitleg" id="uitleg">Tip: zet Handsfree aan — na elk antwoord luister ik automatisch weer.</div>
+
+    <script>
+      var EINDPUNT = "https://text.pollinations.ai/openai";
+      var SYSTEEM = {
+        role: "system",
+        content:
+          "Je bent 'Bijrijder', een gezellige Nederlandse gesprekspartner voor iemand die in de auto rijdt. " +
+          "Antwoord ALTIJD in het Nederlands, kort en mondeling (max 3 zinnen), warm en humoristisch, " +
+          "met af en toe een tegenvraag. Geen opsommingen of markdown — gewoon praatbare taal. " +
+          "Herinner de bestuurder af en toe subtiel aan het verkeer."
+      };
+
+      var GRAPPEN = [
+        "Ik wilde een grap over de file maken, maar die was te lang.",
+        "Wat zei de ene band tegen de andere? Ik voel me onder druk gezet.",
+        "Waarom nam de auto een pauze? Hij zat op zijn reserves."
+      ];
+      var FEITEN = [
+        "Wist je dat een gemiddelde auto ongeveer 30.000 onderdelen bevat?",
+        "De eerste verkeerslichten stonden in 1868 in Londen — en draaiden op gas.",
+        "Bertha Benz reed in 1888 de eerste lange autorit ooit: ruim 100 kilometer, zonder navigatie."
+      ];
+
+      var chat = document.getElementById("chat");
+      var statusEl = document.getElementById("status");
+      var foutEl = document.getElementById("fout");
+      var tekstEl = document.getElementById("tekst");
+      var stuurKnop = document.getElementById("stuur");
+      var micKnop = document.getElementById("mic");
+      var knopPraat = document.getElementById("knopPraat");
+      var knopHandsfree = document.getElementById("knopHandsfree");
+      var snelheidsbalk = document.getElementById("snelheidsbalk");
+
+      var staalWaarde = 0.6;
+      var praatAan = false;
+      var handsfreeAan = false;
+      var bezig = false;
+      var luistert = false;
+      var geschiedenis = [];
+
+      function laad(sleutel, anders) {
+        try {
+          var r = window.localStorage.getItem(sleutel);
+          if (r) return JSON.parse(r);
+        } catch (e) {}
+        return anders;
+      }
+      function bewaar(sleutel, waarde) {
+        try {
+          window.localStorage.setItem(sleutel, JSON.stringify(waarde));
+        } catch (e) {}
+      }
+
+      geschiedenis = laad("bijrijder-historie", []);
+      var berichten = laad("bijrijder-chat", [{ van: "bijrijder", tekst: "Hoi! Ik ben je bijrijder. Zet Handsfree aan en we kletsen gewoon door — of tik de microfoon en praat." }]);
+
+      function toonBerichten() {
+        chat.innerHTML = "";
+        for (var i = 0; i < berichten.length; i++) {
+          var b = berichten[i];
+          var regel = document.createElement("div");
+          regel.className = "regel " + (b.van === "jij" ? "jij" : "ai");
+          var bel = document.createElement("div");
+          bel.className = "bel";
+          bel.textContent = b.tekst;
+          regel.appendChild(bel);
+          chat.appendChild(regel);
+        }
+        chat.scrollTop = chat.scrollHeight;
+        bewaar("bijrijder-chat", berichten);
+      }
+
+      function zetStatus() {
+        var t = luistert ? "luistert…" : bezig ? "denkt na…" : handsfreeAan ? "handsfree — praat maar los" : praatAan ? "voorleesmodus" : "kletsmodus";
+        statusEl.textContent = t;
+        micKnop.className = luistert ? "luistert" : "";
+        micKnop.textContent = luistert ? "■" : "🎙";
+        knopPraat.textContent = "🔊 " + (praatAan ? "aan" : "uit");
+        knopPraat.className = "pill" + (praatAan ? " aan" : "");
+        knopHandsfree.textContent = "🚙 Handsfree " + (handsfreeAan ? "aan" : "uit");
+        knopHandsfree.className = "pill groen" + (handsfreeAan ? " aan" : "");
+        snelheidsbalk.style.display = praatAan || handsfreeAan ? "flex" : "none";
+        document.getElementById("uitleg").style.display = handsfreeAan ? "none" : "block";
+      }
+
+      function offlineAntwoord(t) {
+        var x = t.toLowerCase();
+        if (/(grap|lol|lachen|mop)/.test(x)) return GRAPPEN[Math.floor(Math.random() * GRAPPEN.length)];
+        if (/(feit|weet je|wist je|interessant)/.test(x)) return FEITEN[Math.floor(Math.random() * FEITEN.length)];
+        return "Even geen verbinding met de slimme backend — maar ik ben er nog. Probeer het over een paar seconden opnieuw.";
+      }
+
+      function poging() {
+        var msgs = [SYSTEEM].concat(geschiedenis.slice(-12));
+        return fetch(EINDPUNT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "openai", referrer: "bijrijder-autochat", messages: msgs, temperature: 0.8 })
+        }).then(function (res) {
+          if (!res.ok) throw new Error("API " + res.status);
+          return res.json();
+        }).then(function (data) {
+          var tekst = data && data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : null;
+          if (typeof tekst !== "string" || !tekst.trim()) throw new Error("Leeg antwoord");
+          return tekst.trim();
+        });
+      }
+
+      function vraagAI() {
+        return poging().catch(function () {
+          return new Promise(function (op) { setTimeout(op, 6000); }).then(poging);
+        });
+      }
+
+      function spreekUit(tekst, klaar) {
+        if ((!praatAan && !handsfreeAan) || typeof window.speechSynthesis === "undefined") {
+          if (klaar) klaar();
+          return;
+        }
+        var u = new SpeechSynthesisUtterance(tekst);
+        u.lang = "nl-NL";
+        u.rate = 0.5 + staalWaarde * 0.5;
+        if (klaar) {
+          u.onend = klaar;
+          u.onerror = klaar;
+        }
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      }
+
+      function stuur(rauw) {
+        var inhoud = (rauw || "").trim();
+        if (!inhoud || bezig) return;
+        bezig = true;
+        foutEl.textContent = "";
+        tekstEl.value = "";
+        berichten.push({ van: "jij", tekst: inhoud });
+        geschiedenis.push({ role: "user", content: inhoud });
+        bewaar("bijrijder-historie", geschiedenis);
+        toonBerichten();
+        zetStatus();
+        var denkBubbel = document.createElement("div");
+        denkBubbel.className = "regel ai";
+        denkBubbel.innerHTML = '<div class="bel"><span class="denkpunt"></span> <span class="denkpunt"></span> <span class="denkpunt"></span></div>';
+        chat.appendChild(denkBubbel);
+        chat.scrollTop = chat.scrollHeight;
+        vraagAI()
+          .then(function (antwoord) {
+            return antwoord;
+          })
+          .catch(function (e) {
+            foutEl.textContent =
+              String(e && e.message ? e.message : "").indexOf("429") !== -1
+                ? "De gratis AI-dienst is even op slot (max. 1 antwoord per 15 sec) — dit was een offline-antwoord."
+                : "Geen verbinding met de AI — dit was een offline-antwoord. Probeer het zo weer.";
+            return offlineAntwoord(inhoud);
+          })
+          .then(function (antwoord) {
+            bezig = false;
+            denkBubbel.remove();
+            berichten.push({ van: "bijrijder", tekst: antwoord });
+            geschiedenis.push({ role: "assistant", content: antwoord });
+            bewaar("bijrijder-historie", geschiedenis);
+            toonBerichten();
+            zetStatus();
+            spreekUit(antwoord, function () {
+              if (handsfreeAan) startLuisteren();
+            });
+          });
+      }
+
+      function stuurVanInvoer() {
+        stuur(tekstEl.value);
+      }
+
+      // ---------- Spraakherkenning ----------
       var herkenner = null;
       function gebruikHerkenner() {
         var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
