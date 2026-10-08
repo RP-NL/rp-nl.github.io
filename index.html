@@ -191,10 +191,35 @@
         });
       }
 
-      function vraagAI() {
-        return poging().catch(function () {
-          return new Promise(function (op) { setTimeout(op, 6000); }).then(poging);
+      function bouwPrompt() {
+        var regels = [];
+        var begin = Math.max(0, geschiedenis.length - 6);
+        for (var i = begin; i < geschiedenis.length; i++) {
+          regels.push((geschiedenis[i].role === "user" ? "Gebruiker: " : "Bijrijder: ") + geschiedenis[i].content);
+        }
+        return (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
+      }
+
+      function pogingGET() {
+        var url = "https://text.pollinations.ai/" + encodeURIComponent(bouwPrompt()) + "?model=openai&system=" + encodeURIComponent(SYSTEEM.content);
+        return fetch(url).then(function (res) {
+          if (!res.ok) throw new Error("API " + res.status);
+          return res.text();
+        }).then(function (tekst) {
+          if (typeof tekst !== "string" || !tekst.trim()) throw new Error("Leeg antwoord");
+          return tekst.trim();
         });
+      }
+
+      function wacht(ms) {
+        return new Promise(function (op) { setTimeout(op, ms); });
+      }
+
+      function vraagAI() {
+        return poging()
+          .catch(function () { return wacht(6000).then(poging); })
+          .catch(function () { return pogingGET(); })
+          .catch(function () { return wacht(4000).then(pogingGET); });
       }
 
       function spreekUit(tekst, klaar) {
