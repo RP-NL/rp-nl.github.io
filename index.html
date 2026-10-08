@@ -259,12 +259,24 @@
         u.volume = 1;
         try {
           var stemmen = window.speechSynthesis.getVoices() || [];
+          var beste = null;
+          var besteScore = 0;
           for (var i = 0; i < stemmen.length; i++) {
-            if (stemmen[i].lang && stemmen[i].lang.indexOf("nl") === 0) {
-              u.voice = stemmen[i];
-              break;
+            var s = stemmen[i];
+            if (!s.lang || s.lang.indexOf("nl") !== 0) continue;
+            var info = (s.name + " " + (s.voiceURI || "")).toLowerCase();
+            var score = 1;
+            if (info.indexOf("premium") !== -1 || info.indexOf("enhanced") !== -1 || info.indexOf("verbeterd") !== -1) {
+              score = 3;
+            } else if (info.indexOf("xander") !== -1 || info.indexOf("ellen") !== -1) {
+              score = 2;
+            }
+            if (score > besteScore) {
+              besteScore = score;
+              beste = s;
             }
           }
+          if (beste) u.voice = beste;
         } catch (e) {}
         if (klaar) {
           u.onend = klaar;
