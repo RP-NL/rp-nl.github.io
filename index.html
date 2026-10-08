@@ -85,7 +85,8 @@
     <div class="uitleg" id="uitleg">Tip: zet Handsfree aan — na elk antwoord luister ik automatisch weer.</div>
 
     <script>
-      var EINDPUNT = "https://text.pollinations.ai/openai";
+      var SLEUTEL = "pk_m0kyvas1QdADX9xD";
+      var EINDPUNT = "https://gen.pollinations.ai/v1/chat/completions";
       var SYSTEEM = {
         role: "system",
         content:
@@ -179,8 +180,8 @@
         var msgs = [SYSTEEM].concat(geschiedenis.slice(-12));
         return fetch(EINDPUNT, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "openai", referrer: "bijrijder-autochat", messages: msgs, temperature: 0.8 })
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + SLEUTEL },
+          body: JSON.stringify({ model: "openai", messages: msgs, temperature: 0.8 })
         }).then(function (res) {
           if (!res.ok) throw new Error("API " + res.status);
           return res.json();
@@ -201,7 +202,7 @@
       }
 
       function pogingGET() {
-        var url = "https://text.pollinations.ai/" + encodeURIComponent(bouwPrompt()) + "?model=openai&system=" + encodeURIComponent(SYSTEEM.content);
+        var url = "https://gen.pollinations.ai/text/" + encodeURIComponent(bouwPrompt()) + "?model=openai&key=" + SLEUTEL;
         return fetch(url).then(function (res) {
           if (!res.ok) throw new Error("API " + res.status);
           return res.text();
@@ -215,11 +216,25 @@
         return new Promise(function (op) { setTimeout(op, ms); });
       }
 
+      function pogingLEGACY() {
+        var url = "https://text.pollinations.ai/" + encodeURIComponent(bouwPrompt()) + "?model=openai&key=" + SLEUTEL + "&system=" + encodeURIComponent(SYSTEEM.content);
+        return fetch(url).then(function (res) {
+          if (!res.ok) throw new Error("API " + res.status);
+          return res.text();
+        }).then(function (tekst) {
+          if (typeof tekst !== "string" || !tekst.trim()) throw new Error("Leeg antwoord");
+          return tekst.trim();
+        });
+      }
+
+      function pogingAlles() {
+        return poging().catch(pogingGET).catch(pogingLEGACY);
+      }
+
       function vraagAI() {
-        return poging()
-          .catch(function () { return wacht(6000).then(poging); })
-          .catch(function () { return pogingGET(); })
-          .catch(function () { return wacht(4000).then(pogingGET); });
+        return pogingAlles().catch(function () {
+          return wacht(5000).then(pogingAlles);
+        });
       }
 
       function spreekUit(tekst, klaar) {
