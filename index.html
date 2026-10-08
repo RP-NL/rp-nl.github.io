@@ -105,6 +105,7 @@
           "Je bent 'Bijrijder', een gezellige Nederlandse gesprekspartner voor iemand die in de auto rijdt. " +
           "Antwoord ALTIJD in het Nederlands, kort en mondeling (max 3 zinnen), warm en humoristisch, " +
           "met af en toe een tegenvraag. Geen opsommingen of markdown — gewoon praatbare taal. " +
+          "Als je actuele nieuwskoppen als context krijgt, gebruik die dan concreet en inhoudelijk in je antwoord. " +
           "Herinner de bestuurder af en toe subtiel aan het verkeer."
       };
 
@@ -250,8 +251,37 @@
         return "Even geen verbinding met de slimme backend — maar ik ben er nog. Probeer het over een paar seconden opnieuw.";
       }
 
+      var NIEUWSBRONNEN = [
+        "https://feeds.nos.nl/nosnieuwsalgemeen",
+        "https://www.nu.nl/rss/Algemeen"
+      ];
+
+      function haalKoppen() {
+        var verzoeken = NIEUWSBRONNEN.map(function (bron) {
+          return fetch("https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent(bron))
+            .then(function (r) { return r.json(); })
+            .catch(function () { return null; });
+        });
+        return Promise.all(verzoeken).then(function (resultaten) {
+          var koppen = [];
+          for (var i = 0; i < resultaten.length; i++) {
+            var data = resultaten[i];
+            if (data && data.items) {
+              for (var j = 0; j < Math.min(5, data.items.length); j++) {
+                if (data.items[j] && data.items[j].title) {
+                  koppen.push("- " + data.items[j].title);
+                }
+              }
+            }
+          }
+          return koppen;
+        });
+      }
+
       function poging() {
-        var msgs = [SYSTEEM].concat(geschiedenis.slice(-12));
+        var msgs = [SYSTEEM]
+          .concat(liveContext ? [{ role: "system", content: "Actuele nieuwskoppen van vandaag:\n" + liveContext + "\nGebruik deze inhoudelijk in je antwoord." }] : [])
+          .concat(geschiedenis.slice(-12));
         return fetch(EINDPUNT, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + SLEUTEL },
@@ -272,7 +302,7 @@
         for (var i = begin; i < geschiedenis.length; i++) {
           regels.push((geschiedenis[i].role === "user" ? "Gebruiker: " : "Bijrijder: ") + geschiedenis[i].content);
         }
-        return (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
+        return (liveContext ? "Actuele nieuwskoppen van vandaag:\n" + liveContext + "\n\n" : "") + (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
       }
 
       function pogingGET() {
@@ -382,9 +412,11 @@
         denkBubbel.innerHTML = '<div class="bel"><span class="denkpunt"></span> <span class="denkpunt"></span> <span class="denkpunt"></span></div>';
         chat.appendChild(denkBubbel);
         chat.scrollTop = chat.scrollHeight;
-        vraagAI()
-          .then(function (antwoord) {
-            return antwoord;
+        var nieuwsVraag = /(nieuws|actualiteit|gebeurd|headlines|krant)/i.test(inhoud);
+        (nieuwsVraag ? haalKoppen().catch(function () { return []; }) : Promise.resolve([]))
+          .then(function (koppen) {
+            if (koppen && koppen.length) liveContext = koppen.join("\n");
+            return vraagAI();
           })
           .catch(function (e) {
             foutEl.textContent =
@@ -413,6 +445,7 @@
 
       // ---------- Spraakherkenning ----------
       var herkenner = null;
+      var liveContext = null;
       function gebruikHerkenner() {
         var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SR) return null;
