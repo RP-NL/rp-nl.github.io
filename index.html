@@ -237,6 +237,17 @@
         });
       }
 
+      var stemGeactiveerd = false;
+      function activeerStem() {
+        if (stemGeactiveerd || typeof window.speechSynthesis === "undefined") return;
+        try {
+          var warm = new SpeechSynthesisUtterance(" ");
+          warm.volume = 0;
+          window.speechSynthesis.speak(warm);
+          stemGeactiveerd = true;
+        } catch (e) {}
+      }
+
       function spreekUit(tekst, klaar) {
         if ((!praatAan && !handsfreeAan) || typeof window.speechSynthesis === "undefined") {
           if (klaar) klaar();
@@ -245,6 +256,16 @@
         var u = new SpeechSynthesisUtterance(tekst);
         u.lang = "nl-NL";
         u.rate = 0.5 + staalWaarde * 0.5;
+        u.volume = 1;
+        try {
+          var stemmen = window.speechSynthesis.getVoices() || [];
+          for (var i = 0; i < stemmen.length; i++) {
+            if (stemmen[i].lang && stemmen[i].lang.indexOf("nl") === 0) {
+              u.voice = stemmen[i];
+              break;
+            }
+          }
+        } catch (e) {}
         if (klaar) {
           u.onend = klaar;
           u.onerror = klaar;
@@ -257,6 +278,7 @@
         var inhoud = (rauw || "").trim();
         if (!inhoud || bezig) return;
         bezig = true;
+        activeerStem();
         foutEl.textContent = "";
         tekstEl.value = "";
         berichten.push({ van: "jij", tekst: inhoud });
@@ -312,6 +334,7 @@
 
       function startLuisteren() {
         if (luistert || bezig) return;
+        activeerStem();
         var r = gebruikHerkenner();
         if (!r) {
             foutEl.textContent = "Spraakherkenning wordt niet ondersteund door deze browser — typ gerust, ik lees alles voor.";
