@@ -415,7 +415,12 @@
         var nieuwsVraag = /(nieuws|actualiteit|gebeurd|headlines|krant)/i.test(inhoud);
         (nieuwsVraag ? haalKoppen().catch(function () { return []; }) : Promise.resolve([]))
           .then(function (koppen) {
-            if (koppen && koppen.length) liveContext = koppen.join("\n");
+            if (koppen && koppen.length) {
+              liveContext = koppen.join("\n");
+              foutEl.textContent = "✓ " + koppen.length + " actuele nieuwskoppen opgehaald";
+            } else if (nieuwsVraag) {
+              foutEl.textContent = "Kon de nieuwskoppen niet ophalen — dit antwoord is zonder live nieuws.";
+            }
             return vraagAI();
           })
           .catch(function (e) {
