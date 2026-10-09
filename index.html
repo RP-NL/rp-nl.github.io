@@ -103,11 +103,11 @@
       var SYSTEEM = {
         role: "system",
         content:
-          "Je bent 'Bijrijder', een gezellige Nederlandse gesprekspartner voor iemand die in de auto rijdt. " +
+          "Je bent 'Bijrijder', een scherpe, gezellige Nederlandse gesprekspartner voor iemand die in de auto rijdt. " +
           "Antwoord ALTIJD in het Nederlands, kort en mondeling (max 3 zinnen), warm en humoristisch, " +
           "met af en toe een tegenvraag. Geen opsommingen of markdown — gewoon praatbare taal. " +
-          "Als je actuele nieuwskoppen als context krijgt, gebruik die dan concreet en inhoudelijk in je antwoord. " +
-          "Herinner de bestuurder af en toe subtiel aan het verkeer."
+          "Als je opgezochte context krijgt (nieuwskoppen, Wikipedia, kaartgegevens), gebruik die dan concreet, feitelijk en inhoudelijk. " +
+          "NOOIT opmerkingen over verkeer, rijden, oplettendheid of veiligheid — dat is de taak van de navigatie, niet van jou."
       };
 
       var GRAPPEN = [
@@ -279,9 +279,82 @@
         });
       }
 
+      function haalWiki(onderwerp) {
+        var zoekUrl =
+          "https://nl.wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+          encodeURIComponent(onderwerp) + "&srlimit=2&format=json&origin=*";
+        return fetch(zoekUrl)
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            var hits = data && data.query && data.query.search ? data.query.search : [];
+            if (!hits.length) return [];
+            var titels = [];
+            for (var i = 0; i < hits.length; i++) titels.push(hits[i].title);
+            var somUrl =
+              "https://nl.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&format=json&origin=*&titles=" +
+              encodeURIComponent(titels.join("|"));
+            return fetch(somUrl)
+              .then(function (r) { return r.json(); })
+              .catch(function () { return null; })
+              .then(function (som) {
+                var paginas = som && som.query && som.query.pages ? som.query.pages : {};
+                var teksten = [];
+                for (var key in paginas) {
+                  if (paginas[key] && paginas[key].extract) {
+                    teksten.push(paginas[key].title + ": " + paginas[key].extract.slice(0, 700));
+                  }
+                }
+                return teksten;
+              });
+          })
+          .catch(function () { return []; });
+      }
+
+      function haalOpeningsTijden(vraag) {
+        var m =
+          vraag.match(/openingstijden van\s+(?:de |het |een )?(.+?)[?.]*$/i) ||
+          vraag.match(/hoe laat (?:gaat|is|opent)\s+(?:de |het |een )?(.+?)(?:\s+open|\s+dicht)?[?.]*$/i) ||
+          vraag.match(/wanneer opent\s+(?:de |het |een )?(.+?)[?.]*$/i) ||
+          vraag.match(/is\s+(?:de |het |een )?(.+?)\s+(?:open|gesloten|dicht)/i);
+        var naam = m ? m[1] : "";
+        if (!naam) {
+          naam = vraag
+            .replace(/(wat zijn|wat is|hoe laat|wanneer|openingstijden|open|gesloten|dicht|van |de |het |een |gaat|is|opent|\?)/gi, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+        }
+        if (!naam || naam.length < 2) return Promise.resolve(null);
+        var zoekUrl = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=" + encodeURIComponent(naam);
+        return fetch(zoekUrl)
+          .then(function (r) { return r.json(); })
+          .catch(function () { return null; })
+          .then(function (plekken) {
+            if (!plekken || !plekken.length) return null;
+            var p = plekken[0];
+            var type = p.osm_type === "relation" ? "rel" : p.osm_type === "way" ? "way" : p.osm_type === "node" ? "node" : null;
+            if (!type) return null;
+            var data = encodeURIComponent("[out:json];" + type + "(" + p.osm_id + ");out tags;");
+            return fetch("https://overpass-api.de/api/interpreter?data=" + data)
+              .then(function (r) { return r.json(); })
+              .catch(function () { return null; })
+              .then(function (ov) {
+                if (ov && ov.elements && ov.elements.length && ov.elements[0].tags) {
+                  var tags = ov.elements[0].tags;
+                  var plek = tags.name || naam;
+                  if (tags.opening_hours) {
+                    return plek + ": openingstijden volgens OpenStreetMap — " + tags.opening_hours + (tags.website ? " (website: " + tags.website + ")" : "");
+                  }
+                  return plek + ": gevonden op de kaart, maar zonder geregistreerde openingstijden.";
+                }
+                return null;
+              });
+          })
+          .catch(function () { return null; });
+      }
+
       function poging() {
         var msgs = [SYSTEEM]
-          .concat(liveContext ? [{ role: "system", content: "Actuele nieuwskoppen van vandaag:\n" + liveContext + "\nGebruik deze inhoudelijk in je antwoord." }] : [])
+          .concat(liveContext ? [{ role: "system", content: "Opgezochte actuele informatie:\n" + liveContext + "\nGebruik deze inhoudelijk in je antwoord." }] : [])
           .concat(geschiedenis.slice(-12));
         return fetch(EINDPUNT, {
           method: "POST",
@@ -303,7 +376,7 @@
         for (var i = begin; i < geschiedenis.length; i++) {
           regels.push((geschiedenis[i].role === "user" ? "Gebruiker: " : "Bijrijder: ") + geschiedenis[i].content);
         }
-        return (liveContext ? "Actuele nieuwskoppen van vandaag:\n" + liveContext + "\n\n" : "") + (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
+        return (liveContext ? "Opgezochte actuele informatie:\n" + liveContext + "\n\n" : "") + (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
       }
 
       function pogingGET() {
@@ -415,14 +488,25 @@
         chat.appendChild(denkBubbel);
         chat.scrollTop = chat.scrollHeight;
         var nieuwsVraag = /(nieuws|actualiteit|gebeurd|headlines|krant)/i.test(inhoud);
-        (nieuwsVraag ? haalKoppen().catch(function () { return []; }) : Promise.resolve([]))
-          .then(function (koppen) {
-            if (koppen && koppen.length) {
-              liveContext = koppen.join("\n");
+        var wikiVraag = /(wie |wat is |wat was |wat zijn |wanneer |waar |hoeveel |hoelang |vertel iets over|vertel over|weet je iets over|ken je )/i.test(inhoud);
+        var otVraag = /(openingstijden|hoe laat|wanneer open|gesloten)/i.test(inhoud);
+
+        Promise.all([
+          nieuwsVraag ? haalKoppen().catch(function () { return []; }) : Promise.resolve([]),
+          wikiVraag ? haalWiki(inhoud).catch(function () { return []; }) : Promise.resolve([]),
+          otVraag ? haalOpeningsTijden(inhoud).catch(function () { return null; }) : Promise.resolve(null)
+        ])
+          .then(function (vondsten) {
+            var stukken = [];
+            if (vondsten[0] && vondsten[0].length) stukken.push("Actuele nieuwskoppen van vandaag:\n" + vondsten[0].join("\n"));
+            if (vondsten[1] && vondsten[1].length) stukken.push("Achtergrondinformatie (Wikipedia):\n" + vondsten[1].join("\n"));
+            if (vondsten[2]) stukken.push("Openingstijden en kaartgegevens:\n" + vondsten[2]);
+            if (stukken.length) {
+              liveContext = stukken.join("\n\n");
               foutEl.classList.add("goed");
-              foutEl.textContent = "✓ " + koppen.length + " actuele nieuwskoppen opgehaald";
-            } else if (nieuwsVraag) {
-              foutEl.textContent = "Kon de nieuwskoppen niet ophalen — dit antwoord is zonder live nieuws.";
+              foutEl.textContent = "✓ Actuele informatie opgehaald (" + stukken.length + (stukken.length === 1 ? " bron)" : " bronnen)");
+            } else if (nieuwsVraag || wikiVraag || otVraag) {
+              foutEl.textContent = "Kon geen actuele informatie ophalen — ik antwoord uit algemene kennis.";
             }
             return vraagAI();
           })
