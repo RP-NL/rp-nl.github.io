@@ -30,6 +30,7 @@
       .denkpunt:nth-child(3) { animation-delay: .3s; }
       @keyframes stuiter { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
       #fout { text-align: center; font-size: 13px; color: #fcd34d; padding: 0 24px; }
+      #fout.goed { color: #4ade80; }
       .chips { display: flex; gap: 8px; padding: 0 16px 8px; }
       .chip { flex: 1; border: none; border-radius: 16px; background: rgba(51,65,85,.7); color: #f1f5f9; padding: 12px 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
       .chip:active { transform: scale(.95); }
@@ -400,6 +401,7 @@
         if (!inhoud || bezig) return;
         bezig = true;
         activeerStem();
+        foutEl.classList.remove("goed");
         foutEl.textContent = "";
         tekstEl.value = "";
         berichten.push({ van: "jij", tekst: inhoud });
@@ -417,6 +419,7 @@
           .then(function (koppen) {
             if (koppen && koppen.length) {
               liveContext = koppen.join("\n");
+              foutEl.classList.add("goed");
               foutEl.textContent = "✓ " + koppen.length + " actuele nieuwskoppen opgehaald";
             } else if (nieuwsVraag) {
               foutEl.textContent = "Kon de nieuwskoppen niet ophalen — dit antwoord is zonder live nieuws.";
