@@ -104,9 +104,10 @@
         role: "system",
         content:
           "Je bent 'Bijrijder', een scherpe, gezellige Nederlandse gesprekspartner voor iemand die in de auto rijdt. " +
-          "Antwoord ALTIJD in het Nederlands, kort en mondeling (max 3 zinnen), warm en humoristisch, " +
-          "met af en toe een tegenvraag. Geen opsommingen of markdown — gewoon praatbare taal. " +
-          "Als je opgezochte context krijgt (nieuwskoppen, Wikipedia, kaartgegevens), gebruik die dan concreet, feitelijk en inhoudelijk. " +
+          "Antwoord ALTIJD in het Nederlands, kort en mondeling (max 3 zinnen), warm en humoristisch. " +
+          "Geen opsommingen of markdown — gewoon praatbare taal. " +
+          "Als je zoekresultaten krijgt aangeboden, behandel die als actuele en betrouwbare informatie: antwoord er DIRECT en concreet mee. Gok niet, wees niet voorzichtig en vraag NIET om duiding als het antwoord erin staat. " +
+          "Vraag alleen iets terug als er werkelijk geen informatie beschikbaar is. " +
           "NOOIT opmerkingen over verkeer, rijden, oplettendheid of veiligheid — dat is de taak van de navigatie, niet van jou."
       };
 
@@ -412,6 +413,19 @@
         var msgs = [SYSTEEM]
           .concat(liveContext ? [{ role: "system", content: "Opgezochte actuele informatie:\n" + liveContext + "\nGebruik deze inhoudelijk in je antwoord." }] : [])
           .concat(geschiedenis.slice(-12));
+        if (liveContext) {
+          for (var i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === "user") {
+              msgs[i] = {
+                role: "user",
+                content: msgs[i].content +
+                  "\n\n[Je zojuist opgezochte resultaten: " + liveContext + "]\n" +
+                  "Antwoord direct en concreet op basis van deze resultaten — niet gokken, niet om duiding vragen."
+              };
+              break;
+            }
+          }
+        }
         return fetch(EINDPUNT, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer " + SLEUTEL },
@@ -432,7 +446,7 @@
         for (var i = begin; i < geschiedenis.length; i++) {
           regels.push((geschiedenis[i].role === "user" ? "Gebruiker: " : "Bijrijder: ") + geschiedenis[i].content);
         }
-        return (liveContext ? "Opgezochte actuele informatie:\n" + liveContext + "\n\n" : "") + (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder.";
+        return (liveContext ? "Opgezochte actuele informatie (gebruik dit direct en concreet):\n" + liveContext + "\n\n" : "") + (regels.length ? "Dit is ons gesprek tot nu toe:\n" + regels.join("\n") + "\n\n" : "") + "Geef één passend, kort antwoord als de bijrijder, gebaseerd op de opgezochte informatie.";
       }
 
       function pogingGET() {
