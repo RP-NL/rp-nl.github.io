@@ -352,6 +352,62 @@
           .catch(function () { return null; });
       }
 
+      var OSM_CATEGORIEEN = [
+        { woorden: /supermarkt|jumbo|albert heijn|\bah\b|lidl|aldi|vomar|coop/, label: "Supermarkten", tags: ["shop=supermarket"] },
+        { woorden: /bakker|broodzaak/, label: "Bakkerijen", tags: ["shop=bakery"] },
+        { woorden: /drogist|kruidvat|etos/, label: "Drogisterijen", tags: ["shop=chemist"] },
+        { woorden: /apotheek/, label: "Apotheken", tags: ["amenity=pharmacy"] },
+        { woorden: /tankstation|tanken|benzine|brandstof/, label: "Tankstations", tags: ["amenity=fuel"] },
+        { woorden: /restaurant|pizzeria|grillroom|eetcaf/, label: "Restaurants", tags: ["amenity=restaurant"] },
+        { woorden: /kapsalon|kapper/, label: "Kapsalons", tags: ["shop=hairdresser"] },
+        { woorden: /garage|apk|auto.*reparat/, label: "Garages", tags: ["shop=car_repair"] },
+        { woorden: /geldautomaat|pinnen|bank$/, label: "Banken en geldautomaten", tags: ["amenity=bank", "amenity=atm"] },
+        { woorden: /postkantoor|postnl|dhl|pakketpunt/, label: "Postpunten", tags: ["amenity=post_office"] }
+      ];
+
+      function haalPlaatsInfo(vraag) {
+        var cat = null;
+        for (var i = 0; i < OSM_CATEGORIEEN.length; i++) {
+          if (OSM_CATEGORIEEN[i].woorden.test(vraag)) { cat = OSM_CATEGORIEEN[i]; break; }
+        }
+        if (!cat) return Promise.resolve(null);
+        var pm = vraag.match(/(?:in|bij|te|rond)\s+([A-Z][A-Za-z\-' ]{2,})/) || vraag.match(/(?:in|bij|te)\s+([a-z][a-z\-' ]{2,})/i);
+        var plaats = pm ? pm[1].replace(/\s+(zitten|zit|er|is|zijn|nog|ook|open).*$/i, "").trim() : "";
+        if (!plaats) return Promise.resolve(null);
+        var geoUrl = "https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=nl&q=" + encodeURIComponent(plaats);
+        return fetch(geoUrl)
+          .then(function (r) { return r.json(); })
+          .catch(function () { return null; })
+          .then(function (plekken) {
+            if (!plekken || !plekken.length) return null;
+            var p = plekken[0];
+            var filters = "";
+            for (var f = 0; f < cat.tags.length; f++) {
+              var delen = cat.tags[f].split("=");
+              filters += 'node["' + delen[0] + '"="' + delen[1] + '"](around:4000,' + p.lat + "," + p.lon + ');';
+            }
+            var q = encodeURIComponent("[out:json][timeout:25];(" + filters + ");out tags center;");
+            return fetch("https://overpass-api.de/api/interpreter?data=" + q)
+              .then(function (r) { return r.json(); })
+              .catch(function () { return null; })
+              .then(function (ov) {
+                if (!ov || !ov.elements || !ov.elements.length) return null;
+                var namen = [];
+                for (var k = 0; k < Math.min(8, ov.elements.length); k++) {
+                  var t = ov.elements[k].tags || {};
+                  if (!t.name) continue;
+                  var regel = t.name;
+                  if (t["addr:street"]) regel += ", " + t["addr:street"] + (t["addr:housenumber"] ? " " + t["addr:housenumber"] : "");
+                  if (t.opening_hours) regel += " — open: " + t.opening_hours;
+                  if (namen.indexOf(regel) === -1) namen.push(regel);
+                }
+                if (!namen.length) return null;
+                return cat.label + " binnen 4 km van " + plaats + ":\n- " + namen.join("\n- ");
+              });
+          })
+          .catch(function () { return null; });
+      }
+
       function poging() {
         var msgs = [SYSTEEM]
           .concat(liveContext ? [{ role: "system", content: "Opgezochte actuele informatie:\n" + liveContext + "\nGebruik deze inhoudelijk in je antwoord." }] : [])
@@ -488,19 +544,22 @@
         chat.appendChild(denkBubbel);
         chat.scrollTop = chat.scrollHeight;
         var nieuwsVraag = /(nieuws|actualiteit|gebeurd|headlines|krant)/i.test(inhoud);
-        var wikiVraag = /(wie |wat is |wat was |wat zijn |wanneer |waar |hoeveel |hoelang |vertel iets over|vertel over|weet je iets over|ken je )/i.test(inhoud);
+        var wikiVraag = /(wie |wat is |wat was |wat zijn |wanneer |waar |welke |hoeveel |hoelang |vertel iets over|vertel over|weet je iets over|ken je )/i.test(inhoud);
         var otVraag = /(openingstijden|hoe laat|wanneer open|gesloten)/i.test(inhoud);
+        var plaatsVraag = /(welke |waar kan ik|waar vind ik|zit er|zitten er|in de buurt)/i.test(inhoud);
 
         Promise.all([
           nieuwsVraag ? haalKoppen().catch(function () { return []; }) : Promise.resolve([]),
           wikiVraag ? haalWiki(inhoud).catch(function () { return []; }) : Promise.resolve([]),
-          otVraag ? haalOpeningsTijden(inhoud).catch(function () { return null; }) : Promise.resolve(null)
+          otVraag ? haalOpeningsTijden(inhoud).catch(function () { return null; }) : Promise.resolve(null),
+          plaatsVraag ? haalPlaatsInfo(inhoud).catch(function () { return null; }) : Promise.resolve(null)
         ])
           .then(function (vondsten) {
             var stukken = [];
             if (vondsten[0] && vondsten[0].length) stukken.push("Actuele nieuwskoppen van vandaag:\n" + vondsten[0].join("\n"));
             if (vondsten[1] && vondsten[1].length) stukken.push("Achtergrondinformatie (Wikipedia):\n" + vondsten[1].join("\n"));
             if (vondsten[2]) stukken.push("Openingstijden en kaartgegevens:\n" + vondsten[2]);
+            if (vondsten[3]) stukken.push("Gevonden plaatsen in de buurt (OpenStreetMap):\n" + vondsten[3]);
             if (stukken.length) {
               liveContext = stukken.join("\n\n");
               foutEl.classList.add("goed");
